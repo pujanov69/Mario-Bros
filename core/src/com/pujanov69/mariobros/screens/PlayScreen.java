@@ -26,6 +26,7 @@ import com.pujanov69.mariobros.MarioBros;
 import com.pujanov69.mariobros.scenes.Hud;
 import com.pujanov69.mariobros.sprites.Mario;
 import com.pujanov69.mariobros.tools.B2WorldCreator;
+import com.pujanov69.mariobros.tools.WorldContactListener;
 
 public class PlayScreen implements Screen {
 
@@ -70,6 +71,8 @@ public class PlayScreen implements Screen {
 
         //create mario in our game world
         player = new Mario(world, this);
+
+        world.setContactListener(new WorldContactListener());
     }
 
     public TextureAtlas getAtlas(){
