@@ -6,29 +6,29 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
-import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
-import com.badlogic.gdx.maps.MapObject;
-import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TmxMapLoader;
 import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
-import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.physics.box2d.Body;
-import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.Box2DDebugRenderer;
-import com.badlogic.gdx.physics.box2d.FixtureDef;
-import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import com.pujanov69.mariobros.MarioBros;
 import com.pujanov69.mariobros.scenes.Hud;
-import com.pujanov69.mariobros.sprites.Goomba;
+import com.pujanov69.mariobros.sprites.items.Item;
+import com.pujanov69.mariobros.sprites.items.ItemDef;
+import com.pujanov69.mariobros.sprites.items.Mushroom;
+import com.pujanov69.mariobros.sprites.enemies.Enemy;
 import com.pujanov69.mariobros.sprites.Mario;
 import com.pujanov69.mariobros.tools.B2WorldCreator;
 import com.pujanov69.mariobros.tools.WorldContactListener;
+
+import java.util.PriorityQueue;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class PlayScreen implements Screen {
 
@@ -47,11 +47,15 @@ public class PlayScreen implements Screen {
     private World world;
     private Box2DDebugRenderer b2dr;
 
+    private B2WorldCreator creator;
+
     //sprites
     private Mario player;
-    private Goomba goomba;
 
     private Music music;
+
+    private Array<Item> items;
+    private LinkedBlockingQueue<ItemDef> itemsToSpawn;
 
     public PlayScreen(MarioBros game){
 
@@ -73,7 +77,7 @@ public class PlayScreen implements Screen {
         world = new World(new Vector2(0,-10), true);
         b2dr = new Box2DDebugRenderer();
 
-        new B2WorldCreator(this);
+        creator = new B2WorldCreator(this);
 
         //create mario in our game world
         player = new Mario(this);
@@ -84,7 +88,22 @@ public class PlayScreen implements Screen {
         music.setLooping(true);
         music.play();
 
-        goomba = new Goomba(this, 0.32f, 0.32f);
+        items = new Array<Item>();
+        itemsToSpawn = new LinkedBlockingQueue<ItemDef>();
+
+    }
+
+    public void spawnItem(ItemDef iDef){
+        itemsToSpawn.add(iDef);
+    }
+
+    public void handleSpawningItems(){
+        if(!itemsToSpawn.isEmpty()){
+            ItemDef idef = itemsToSpawn.poll();
+            if(idef.type == Mushroom.class){
+                items.add(new Mushroom(this, idef.position.x, idef.position.y));
+            }
+        }
     }
 
     public TextureAtlas getAtlas(){
@@ -97,26 +116,41 @@ public class PlayScreen implements Screen {
     }
 
     public void handleInput(float dt){
-        if(Gdx.input.isKeyJustPressed(Input.Keys.UP))
-            player.b2body.applyLinearImpulse(new Vector2(0,4), player.b2body.getWorldCenter(), true);
-        if(Gdx.input.isKeyPressed(Input.Keys.RIGHT) && player.b2body.getLinearVelocity().x <= 2)
-            player.b2body.applyLinearImpulse(new Vector2(0.1f, 0), player.b2body.getWorldCenter(), true);
-        if(Gdx.input.isKeyPressed(Input.Keys.LEFT) && player.b2body.getLinearVelocity().x >= -2)
-            player.b2body.applyLinearImpulse(new Vector2(-0.1f, 0), player.b2body.getWorldCenter(), true);
+        if(player.currentState != Mario.State.DEAD) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.UP))
+                player.b2body.applyLinearImpulse(new Vector2(0, 4), player.b2body.getWorldCenter(), true);
+            if (Gdx.input.isKeyPressed(Input.Keys.RIGHT) && player.b2body.getLinearVelocity().x <= 2)
+                player.b2body.applyLinearImpulse(new Vector2(0.1f, 0), player.b2body.getWorldCenter(), true);
+            if (Gdx.input.isKeyPressed(Input.Keys.LEFT) && player.b2body.getLinearVelocity().x >= -2)
+                player.b2body.applyLinearImpulse(new Vector2(-0.1f, 0), player.b2body.getWorldCenter(), true);
+        }
 
     }
 
     public void update(float dt){
         handleInput(dt);
 
+        handleSpawningItems();
+
         world.step(1/60f, 6,2);
 
         player.update(dt);
-        goomba.update(dt);
+
+        for(Enemy enemy: creator.getGoombas()){
+            enemy.update(dt);
+            if(enemy.getX() < player.getX() + 224 / MarioBros.PPM)
+                enemy.b2body.setActive(true);
+        }
+
+        for(Item item:items){
+            item.update(dt);
+        }
+
         hud.update(dt);
 
-        gamecam.position.x = player.b2body.getPosition().x;
-
+        if(player.currentState != Mario.State.DEAD) {
+            gamecam.position.x = player.b2body.getPosition().x;
+        }
         gamecam.update();
         renderer.setView(gamecam);
     }
@@ -135,7 +169,12 @@ public class PlayScreen implements Screen {
         game.batch.setProjectionMatrix(gamecam.combined);
         game.batch.begin();
         player.draw(game.batch);
-        goomba.draw(game.batch);
+        for(Enemy enemy: creator.getGoombas()){
+            enemy.draw(game.batch);
+        }
+        for(Item item : items){
+            item.draw(game.batch);
+        }
         game.batch.end();
 
         //Set our batch to now draw what the hud camera sees.
