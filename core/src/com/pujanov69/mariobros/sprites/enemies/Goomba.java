@@ -12,6 +12,7 @@ import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.utils.Array;
 import com.pujanov69.mariobros.MarioBros;
 import com.pujanov69.mariobros.screens.PlayScreen;
+import com.pujanov69.mariobros.sprites.Mario;
 
 
 public class Goomba extends Enemy {
@@ -93,8 +94,17 @@ public class Goomba extends Enemy {
     }
 
     @Override
-    public void hitOnHead() {
+    public void hitOnHead(Mario mario) {
             setToDestroy = true;
         MarioBros.manager.get("audio/sounds/stomp.wav", Sound.class).play();
+    }
+
+    @Override
+    public void onEnemyHit(Enemy enemy) {
+        if(enemy instanceof Turtle && ((Turtle) enemy).currentState == Turtle.State.MOVING_SHELL){
+            setToDestroy = true;
+        }else{
+            reverseVelocity(true,false);
+        }
     }
 }
